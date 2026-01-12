@@ -1,102 +1,160 @@
 
 import React, { useState } from 'react';
-import { UserState, AppSettings } from '../types';
+import { Task } from '../types.ts';
+import { CheckCircle2, PlayCircle, ExternalLink, Zap, MousePointerClick, Tv, Layout } from 'lucide-react';
 
-interface TasksPageProps {
-  state: UserState;
-  settings: AppSettings;
-  onComplete: (taskId: string, reward: number) => void;
+interface Props {
+  tasks: Task[];
+  onComplete: (id: string) => void;
 }
 
-const TasksPage: React.FC<TasksPageProps> = ({ state, settings, onComplete }) => {
-  const [loadingTask, setLoadingTask] = useState<string | null>(null);
+const TasksView: React.FC<Props> = ({ tasks, onComplete }) => {
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
-  const showAd = async (): Promise<boolean> => {
-    if (!window.Adsgram) return true;
-    try {
-      const AdController = window.Adsgram.init({ blockId: settings.adsgramBlockId });
-      const result = await AdController.show();
-      return result.done === true;
-    } catch (e) {
-      console.error("Task Ad failed:", e);
-      return false;
+  const handleTaskStart = (task: Task) => {
+    if (task.completed) return;
+    
+    const tg = window.Telegram?.WebApp;
+    setActiveTaskId(task.id);
+
+    const viewDuration = task.icon === 'video' ? 5000 : 2000;
+
+    if (task.url && task.url !== '#') {
+      if (tg && tg.openLink) {
+        tg.openLink(task.url);
+      } else {
+        window.open(task.url, '_blank');
+      }
+    }
+
+    setTimeout(() => {
+      onComplete(task.id);
+      setActiveTaskId(null);
+      if (tg) tg.HapticFeedback.notificationOccurred('success');
+    }, viewDuration);
+  };
+
+  const getIcon = (type: string) => {
+    switch(type) {
+      case 'video': return <PlayCircle size={24} />;
+      case 'external': return <ExternalLink size={24} />;
+      case 'click': return <MousePointerClick size={24} />;
+      default: return <Zap size={24} />;
     }
   };
 
-  const simulateTask = async (id: string, reward: number, type: 'ad' | 'social') => {
-    if (state.completedTasks.includes(id)) return;
-    
-    setLoadingTask(id);
-    
-    let success = false;
-    if (type === 'ad') {
-      success = await showAd();
-    } else {
-      // Social tasks simulation
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      success = true;
-    }
+  const videoTasks = tasks.filter(t => t.icon === 'video');
+  const otherTasks = tasks.filter(t => t.icon !== 'video');
 
-    if (success) {
-      onComplete(id, reward);
-    } else {
-      alert("لم يتم إكمال المهمة بنجاح.");
-    }
-    
-    setLoadingTask(null);
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
+      
+      <div className="bg-gradient-to-br from-purple-900/40 to-black border border-purple-500/30 rounded-[2.5rem] p-8 flex flex-col items-center gap-4 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+          <div className="absolute top-1/4 left-1/4 animate-pulse"><Tv size={100} /></div>
+        </div>
+        
+        <div className="w-16 h-16 bg-purple-500/20 rounded-2xl flex items-center justify-center text-purple-400 mb-2 animate-icon-pulse shadow-[0_0_20px_rgba(168,85,247,0.4)]">
+          <Layout size={32} />
+        </div>
+        <div className="text-center space-y-1 relative z-10">
+          <h1 className="text-3xl font-black uppercase tracking-tight">Earning Center</h1>
+          <p className="text-gray-400 font-bold text-sm">Watch ads & visit sponsors to earn TON</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 px-2">
+          <Tv size={16} className="text-red-500 animate-icon-pulse" />
+          <h3 className="font-black uppercase text-xs text-gray-500 tracking-widest">Video Ads (High Reward)</h3>
+        </div>
+        <div className="space-y-3">
+          {videoTasks.map((task) => (
+            <TaskCard 
+              key={task.id} 
+              task={task} 
+              isProcessing={activeTaskId === task.id}
+              onStart={() => handleTaskStart(task)}
+              icon={getIcon('video')}
+              colorClass="red"
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 px-2">
+          <MousePointerClick size={16} className="text-blue-500 animate-icon-pulse" />
+          <h3 className="font-black uppercase text-xs text-gray-500 tracking-widest">Click & Earn</h3>
+        </div>
+        <div className="space-y-3">
+          {otherTasks.map((task) => (
+            <TaskCard 
+              key={task.id} 
+              task={task} 
+              isProcessing={activeTaskId === task.id}
+              onStart={() => handleTaskStart(task)}
+              icon={getIcon(task.icon)}
+              colorClass="blue"
+            />
+          ))}
+        </div>
+      </div>
+
+    </div>
+  );
+};
+
+interface TaskCardProps {
+  task: Task;
+  isProcessing: boolean;
+  onStart: () => void;
+  icon: React.ReactNode;
+  colorClass: 'red' | 'blue' | 'purple';
+}
+
+const TaskCard: React.FC<TaskCardProps> = ({ task, isProcessing, onStart, icon, colorClass }) => {
+  const colors = {
+    red: 'text-red-500 bg-red-500/10 border-red-500/20',
+    blue: 'text-blue-500 bg-blue-500/10 border-blue-500/20',
+    purple: 'text-purple-500 bg-purple-500/10 border-purple-500/20'
   };
 
   return (
-    <div className="flex flex-col gap-6 py-4 animate-fadeIn">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold">المهام اليومية (Adsgram)</h2>
-        <p className="text-slate-400 text-sm mt-1">أكمل المهام لزيادة رصيدك</p>
-      </div>
+    <div className={`bg-[#0a0a0a] border rounded-[2rem] p-5 transition-all duration-300 ${
+      task.completed ? 'opacity-40 border-gray-800' : 'border-slate-800 hover:border-slate-700'
+    }`}>
+      <div className="flex items-center gap-4">
+        <div className={`p-4 rounded-2xl transition-all duration-500 animate-icon-pulse ${
+          task.completed ? 'bg-slate-800 text-green-500' : colors[colorClass]
+        }`}>
+          {task.completed ? <CheckCircle2 size={24} className="animate-bounce-in" /> : icon}
+        </div>
+        
+        <div className="flex-1">
+          <h3 className="font-black text-sm mb-0.5">{task.title}</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-green-400 text-xs font-black">+{task.reward} TON</span>
+            {task.completed && <span className="text-[9px] text-gray-500 font-black uppercase">Earned</span>}
+          </div>
+        </div>
 
-      <div className="space-y-4">
-        {settings.tasks.map(task => {
-          const isCompleted = state.completedTasks.includes(task.id);
-          const isLoading = loadingTask === task.id;
-
-          return (
-            <div key={task.id} className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex justify-between items-center group hover:border-blue-500/50 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-xl ${isCompleted ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
-                  {isCompleted ? (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                  ) : (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                  )}
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-100">{task.title}</h4>
-                  <p className="text-xs text-green-400 font-mono">+{task.reward.toFixed(8)} TON</p>
-                </div>
-              </div>
-
-              <button
-                disabled={isCompleted || !!loadingTask}
-                onClick={() => simulateTask(task.id, task.reward, task.type)}
-                className={`px-6 py-2 rounded-xl text-sm font-bold transition-all duration-200 ${
-                  isCompleted 
-                    ? 'bg-slate-800 text-slate-500 cursor-default' 
-                    : isLoading
-                      ? 'bg-slate-700 text-slate-400 cursor-wait'
-                      : 'bg-blue-600 hover:bg-blue-500 text-white hover:scale-105 active:scale-95 hover:shadow-lg hover:shadow-blue-500/20'
-                }`}
-              >
-                {isCompleted ? 'مكتمل' : isLoading ? 'جاري العرض...' : 'بدء'}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="bg-blue-900/20 border border-blue-800/50 p-4 rounded-2xl text-center text-sm text-blue-300">
-        يتم تجديد المهام دورياً عبر شبكة Adsgram. تأكد من إكمالها جميعاً لزيادة أرباحك!
+        {!task.completed && (
+          <button 
+            onClick={onStart}
+            disabled={isProcessing}
+            className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-90 min-w-[100px] ${
+              isProcessing 
+                ? 'bg-slate-800 text-slate-500 animate-pulse' 
+                : 'bg-white text-black hover:bg-gray-200'
+            }`}
+          >
+            {isProcessing ? 'Verifying...' : 'Start'}
+          </button>
+        )}
       </div>
     </div>
   );
 };
 
-export default TasksPage;
+export default TasksView;
