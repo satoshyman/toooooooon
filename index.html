@@ -90,9 +90,9 @@
             if (root && (msg.includes('useState') || msg.includes('null'))) {
                 root.innerHTML = `
                     <div style="padding: 40px; color: #ef4444; text-align: center; font-family: 'Cairo', sans-serif; background: #020617; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                        <h2 style="font-weight: 900;">خطأ في تحميل React</h2>
-                        <p style="font-size: 12px; opacity: 0.6; margin-top: 15px;">يرجى مسح ذاكرة التخزين المؤقت وإعادة المحاولة.</p>
-                        <button onclick="location.reload(true)" style="margin-top: 25px; background: #0088CC; color: white; border: none; padding: 12px 30px; border-radius: 12px; font-weight: bold;">تحديث الصفحة</button>
+                        <h2 style="font-weight: 900;">خطأ في تحميل النظام</h2>
+                        <p style="font-size: 12px; opacity: 0.6; margin-top: 15px;">يوجد تعارض في ملفات React. يرجى مسح ذاكرة التخزين المؤقت وتحديث الصفحة.</p>
+                        <button onclick="location.reload(true)" style="margin-top: 25px; background: #0088CC; color: white; border: none; padding: 12px 30px; border-radius: 12px; font-weight: bold; cursor: pointer;">تحديث الصفحة</button>
                     </div>
                 `;
             }
