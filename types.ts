@@ -1,51 +1,75 @@
 
-export interface WithdrawalRecord {
-  id: string;
-  amount: number;
-  address: string;
-  status: 'Processing' | 'Completed' | 'Rejected';
-  timestamp: number;
-}
-
-export interface AppSettings {
-  miningRatePerSession: number;
-  sessionDurationMs: number;
-  referralCommission: number;
-  minWithdrawal: number;
-  dailyGiftAmount: number;
-  adsgramBlockId: string;
-  adminBotToken: string;
-  adminChatId: string;
-  tasks: Task[];
-  adminPassword?: string;
-}
-
-export interface UserState {
-  balance: number;
-  miningStartTime: number | null;
-  isMining: boolean;
-  completedTasks: string[];
-  withdrawalAddress: string;
-  referralsCount: number;
-  referralEarnings: number;
-  userId: string;
-  username: string;
-  withdrawalHistory: WithdrawalRecord[];
-  lastGiftClaimedTime: number | null;
-  referredBy: string | null;
+/* Global declaration for the Telegram WebApp SDK to resolve TypeScript "property does not exist on type Window" errors */
+declare global {
+  interface Window {
+    Telegram?: any;
+  }
 }
 
 export interface Task {
   id: string;
   title: string;
   reward: number;
-  type: 'ad' | 'social';
+  completed: boolean;
+  icon: string;
+  url: string;
 }
 
-export enum Page {
-  Mining = 'mining',
-  Tasks = 'tasks',
-  Referrals = 'referrals',
-  Wallet = 'wallet',
-  Admin = 'admin'
+export interface Referral {
+  id: string;
+  username: string;
+  joinedAt: string;
+  reward: number;
+}
+
+export type WithdrawalStatus = 'Pending' | 'Paid' | 'Rejected';
+
+export interface WithdrawalRequest {
+  id: string;
+  username: string;
+  walletAddress: string;
+  amount: number;
+  status: WithdrawalStatus;
+  requestedAt: string;
+}
+
+export interface AppConfig {
+  sessionDuration: number;
+  miningRate: number;
+  referralCommissionPercent: number;
+  referralJoinBonus: number;
+  dailyGiftReward: number;
+  dailyGiftCooldown: number;
+  faucetReward: number;
+  faucetCooldown: number;
+  activeMinersDisplay: number;
+  minWithdrawal: number;
+}
+
+export interface MiningStats {
+  balance: number;
+  sessionStartTime: number | null; 
+  lastDailyGiftClaimed: number | null; 
+  lastFaucetClaimed: number | null; 
+}
+
+export interface AppState {
+  stats: MiningStats;
+  config: AppConfig;
+  tasks: Task[];
+  referrals: Referral[];
+  withdrawals: WithdrawalRequest[];
+  referralCode: string;
+  monetization: {
+    monetagTagId: string;
+    sponsoredLink: string;
+    adBonus: number;
+  };
+}
+
+export enum View {
+  MINING = 'mining',
+  REFERRALS = 'referrals',
+  TASKS = 'tasks',
+  ADMIN = 'admin'
 }
