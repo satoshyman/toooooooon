@@ -1,9 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppState, View, AppConfig } from './types.ts';
-// Fix: Import from .tsx instead of .ts to match constants.tsx
 import { INITIAL_TASKS, NAV_ITEMS, TON_LOGO } from './constants.tsx';
-// Fix: Use correct component file names that exist in the project
 import MiningView from './components/MiningView.tsx';
 import ReferralView from './components/ReferralView.tsx';
 import TasksView from './components/TasksView.tsx';
