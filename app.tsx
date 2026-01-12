@@ -1,262 +1,229 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import MiningPage from './components/MiningPage';
-import TasksPage from './components/TasksPage';
-import WalletPage from './components/WalletPage';
-import ReferralPage from './components/ReferralPage';
-import AdminDashboard from './components/AdminDashboard';
-import { Page, UserState, WithdrawalRecord, AppSettings } from './types';
-import { DEFAULT_SETTINGS } from './constants';
+import { AppState, View, AppConfig } from './types.ts';
+// Fix: Import from .tsx instead of .ts to match constants.tsx
+import { INITIAL_TASKS, NAV_ITEMS, TON_LOGO } from './constants.tsx';
+// Fix: Use correct component file names that exist in the project
+import MiningView from './components/MiningView.tsx';
+import ReferralView from './components/ReferralView.tsx';
+import TasksView from './components/TasksView.tsx';
+import AdminView from './components/AdminView.tsx';
+import { Lock, X, Bell } from 'lucide-react';
 
-declare global {
-  interface Window {
-    Telegram: any;
-  }
-}
+const LOCAL_STORAGE_KEY = 'ton_miner_v2_final';
+const ADMIN_PASSCODE = "7788";
+
+const INITIAL_CONFIG: AppConfig = {
+  sessionDuration: 3600 * 1000, 
+  miningRate: 0.0005, 
+  referralCommissionPercent: 0.10,
+  referralJoinBonus: 0.1, 
+  dailyGiftReward: 0.001,
+  dailyGiftCooldown: 24 * 60 * 60 * 1000,
+  faucetReward: 0.0002,
+  faucetCooldown: 15 * 60 * 1000,
+  activeMinersDisplay: 42150,
+  minWithdrawal: 0.5 
+};
 
 const App: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState<Page>(Page.Mining);
-  const [adminClickCount, setAdminClickCount] = useState(0);
-  const [showAdminAuth, setShowAdminAuth] = useState(false);
-  const [authPassword, setAuthPassword] = useState('');
-  const [authError, setAuthError] = useState(false);
+  const [currentView, setCurrentView] = useState<View>(View.MINING);
+  const [isAdminVisible, setIsAdminVisible] = useState(false);
+  const [isPasscodePromptOpen, setIsPasscodePromptOpen] = useState(false);
+  const [passcodeInput, setPasscodeInput] = useState("");
+  const [logoClickCount, setLogoClickCount] = useState(0);
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
 
-  // تحميل الإعدادات من التخزين المحلي أو استخدام الافتراضية
-  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem('ton_app_settings');
-    const parsed = saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
-    return { ...DEFAULT_SETTINGS, ...parsed };
-  });
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+    try {
+      if (window.Telegram?.WebApp?.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.notificationOccurred(type === 'error' ? 'error' : 'success');
+      }
+    } catch(e) {}
+  }, []);
 
-  // حالة المستخدم
-  const [userState, setUserState] = useState<UserState>(() => {
-    const saved = localStorage.getItem('ton_miner_state');
-    if (saved) {
-      return JSON.parse(saved);
-    }
+  const [state, setState] = useState<AppState>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (saved) {
+        const p = JSON.parse(saved);
+        return {
+          ...p,
+          stats: {
+            balance: typeof p.stats?.balance === 'number' ? p.stats.balance : 0,
+            sessionStartTime: p.stats?.sessionStartTime || null,
+            lastDailyGiftClaimed: p.stats?.lastDailyGiftClaimed || null,
+            lastFaucetClaimed: p.stats?.lastFaucetClaimed || null
+          },
+          config: { ...INITIAL_CONFIG, ...(p.config || {}) },
+          tasks: Array.isArray(p.tasks) ? p.tasks : INITIAL_TASKS,
+          withdrawals: Array.isArray(p.withdrawals) ? p.withdrawals : [],
+          referrals: Array.isArray(p.referrals) ? p.referrals : [],
+          referralCode: p.referralCode || `TON-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+          monetization: { monetagTagId: '0', sponsoredLink: '#', adBonus: 0.0001, ...(p.monetization || {}) }
+        };
+      }
+    } catch (e) { console.warn("Storage Reset"); }
+    
     return {
-      balance: 0.00000000,
-      miningStartTime: null,
-      isMining: false,
-      completedTasks: [],
-      withdrawalAddress: '',
-      referralsCount: 0,
-      referralEarnings: 0,
-      userId: Math.random().toString(36).substring(2, 9).toUpperCase(),
-      username: 'مستخدم جديد',
-      withdrawalHistory: [],
-      lastGiftClaimedTime: null,
-      referredBy: null
+      stats: { balance: 0.0, sessionStartTime: null, lastDailyGiftClaimed: null, lastFaucetClaimed: null },
+      config: INITIAL_CONFIG,
+      tasks: INITIAL_TASKS,
+      referrals: [],
+      withdrawals: [],
+      referralCode: `TON-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+      monetization: { monetagTagId: '0', sponsoredLink: '#', adBonus: 0.0001 }
     };
   });
 
-  // تليجرام وإعدادات الهوية
   useEffect(() => {
-    if (window.Telegram?.WebApp) {
-      const tg = window.Telegram.WebApp;
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
       tg.ready();
       tg.expand();
-
-      const tgUser = tg.initDataUnsafe?.user;
-      if (tgUser) {
-        const name = tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : '');
-        setUserState(prev => ({ ...prev, username: name }));
-      }
-
-      // كود الإحالة من الرابط t.me/bot?start=REF_ID
-      const startParam = tg.initDataUnsafe?.start_param;
-      if (startParam && !userState.referredBy && startParam !== userState.userId) {
-        setUserState(prev => ({
-          ...prev,
-          referredBy: startParam
-        }));
-      }
+      try {
+        tg.headerColor = '#020617';
+        tg.backgroundColor = '#020617';
+      } catch(e) {}
     }
   }, []);
 
-  // حفظ الإعدادات وحالة المستخدم تلقائياً
   useEffect(() => {
-    localStorage.setItem('ton_app_settings', JSON.stringify(appSettings));
-  }, [appSettings]);
-
-  useEffect(() => {
-    localStorage.setItem('ton_miner_state', JSON.stringify(userState));
-  }, [userState]);
-
-  const handleStartMining = () => {
-    setUserState(prev => ({
-      ...prev,
-      isMining: true,
-      miningStartTime: Date.now()
-    }));
-  };
-
-  const handleEndMining = useCallback(() => {
-    setUserState(prev => {
-      if (!prev.isMining) return prev;
-      return {
-        ...prev,
-        isMining: false,
-        miningStartTime: null,
-        balance: prev.balance + appSettings.miningRatePerSession
-      };
-    });
-  }, [appSettings.miningRatePerSession]);
-
-  const handleCompleteTask = (taskId: string, reward: number) => {
-    if (!userState.completedTasks.includes(taskId)) {
-      setUserState(prev => ({
-        ...prev,
-        balance: prev.balance + reward,
-        completedTasks: [...prev.completedTasks, taskId]
-      }));
-    }
-  };
-
-  const handleClaimDailyGift = () => {
-    setUserState(prev => ({
-      ...prev,
-      balance: prev.balance + appSettings.dailyGiftAmount,
-      lastGiftClaimedTime: Date.now()
-    }));
-  };
-
-  const sendTelegramNotification = async (amount: number, address: string) => {
-    const { adminBotToken, adminChatId } = appSettings;
-    if (!adminBotToken || !adminChatId) return;
-
-    const message = `💰 *طلب سحب جديد*
-👤 الاسم: ${userState.username}
-🆔 المعرف: ${userState.userId}
-💵 المبلغ: ${amount.toFixed(8)} TON
-🏦 المحفظة: \`${address}\``;
-
     try {
-      await fetch(`https://api.telegram.org/bot${adminBotToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: adminChatId,
-          text: message,
-          parse_mode: 'Markdown'
-        })
-      });
-    } catch (e) {
-      console.error("إشعار تليجرام فشل", e);
-    }
-  };
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
+    } catch(e) {}
+  }, [state]);
 
-  const handleWithdraw = (amount: number, address: string) => {
-    const newRecord: WithdrawalRecord = {
-      id: Math.random().toString(36).substring(2, 10).toUpperCase(),
-      amount,
-      address,
-      status: 'Processing',
-      timestamp: Date.now()
-    };
-    
-    setUserState(prev => ({
-      ...prev,
-      balance: prev.balance - amount,
-      withdrawalHistory: [newRecord, ...prev.withdrawalHistory]
-    }));
-
-    sendTelegramNotification(amount, address);
-  };
-
-  const updateWithdrawalStatus = (id: string, status: WithdrawalRecord['status']) => {
-    setUserState(prev => ({
-      ...prev,
-      withdrawalHistory: prev.withdrawalHistory.map(w => w.id === id ? { ...w, status } : w)
-    }));
-  };
-
-  const handleLogoClick = () => {
-    setAdminClickCount(prev => {
-      const next = prev + 1;
-      if (next === 8) {
-        setShowAdminAuth(true);
+  const handleSecretToggle = () => {
+    setLogoClickCount(prev => {
+      if (prev + 1 >= 5) {
+        setIsPasscodePromptOpen(true);
+        try { window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('heavy'); } catch(e) {}
         return 0;
       }
-      return next;
+      return prev + 1;
     });
+    const timer = setTimeout(() => setLogoClickCount(0), 2000);
+    return () => clearTimeout(timer);
   };
 
-  const submitAuth = () => {
-    if (authPassword === appSettings.adminPassword) {
-      setCurrentPage(Page.Admin);
-      setShowAdminAuth(false);
-      setAuthPassword('');
+  const verifyPasscode = () => {
+    if (passcodeInput === ADMIN_PASSCODE) {
+      setIsAdminVisible(true);
+      setIsPasscodePromptOpen(false);
+      setPasscodeInput("");
+      setCurrentView(View.ADMIN);
+      showToast('تم تفعيل وضع المسؤول');
     } else {
-      setAuthError(true);
-      setTimeout(() => setAuthError(false), 500);
+      setPasscodeInput("");
+      showToast('رمز الدخول خاطئ!', 'error');
     }
+  };
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setState(prev => {
+        const now = Date.now();
+        if (prev.stats.sessionStartTime && (now - prev.stats.sessionStartTime >= prev.config.sessionDuration)) {
+          return {
+            ...prev,
+            stats: { ...prev.stats, balance: prev.stats.balance + prev.config.miningRate, sessionStartTime: null }
+          };
+        }
+        return prev;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleViewChange = (view: View) => {
+    setCurrentView(view);
+    try { window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('light'); } catch(e) {}
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-950 text-white pb-20 overflow-hidden font-['Cairo']" dir="rtl">
-      <header className="p-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center sticky top-0 z-50">
-        <div className="flex items-center gap-2 cursor-pointer" onClick={handleLogoClick}>
-          <img src="https://cryptologos.cc/logos/toncoin-ton-logo.svg?v=040" className="w-8 h-8" alt="TON" />
-          <span className="font-bold text-lg text-blue-400">TON MINER</span>
-        </div>
-        <div className="bg-slate-800 px-4 py-1.5 rounded-full text-blue-400 text-sm font-black border border-blue-500/20">
-          {userState.balance.toFixed(8)} <span className="text-[10px]">TON</span>
-        </div>
-      </header>
-
-      {showAdminAuth && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-950/95 backdrop-blur-md">
-          <div className={`bg-slate-900 border-2 ${authError ? 'border-red-500 animate-shake' : 'border-slate-800'} p-8 rounded-[2rem] w-full max-w-sm shadow-2xl`}>
-            <h3 className="text-xl font-black text-center mb-6">لوحة التحكم</h3>
-            <input 
-              type="password"
-              placeholder="الرمز السري"
-              value={authPassword}
-              onChange={(e) => setAuthPassword(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl py-4 px-4 text-center text-xl text-blue-500 outline-none mb-4"
-            />
-            <button onClick={submitAuth} className="w-full py-4 bg-blue-600 rounded-xl font-black">دخول</button>
-            <button onClick={() => setShowAdminAuth(false)} className="w-full py-2 text-slate-500 text-sm mt-2">إلغاء</button>
-          </div>
+    <div className="flex flex-col h-screen max-w-md mx-auto relative text-white overflow-hidden select-none bg-[#020617]">
+      {toast && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[2000] w-max max-w-[90%] pointer-events-none animate-in fade-in slide-in-from-top-4 duration-300">
+           <div className={`px-6 py-3 rounded-full border shadow-2xl backdrop-blur-3xl flex items-center gap-3 ${toast.type === 'error' ? 'bg-red-500/20 border-red-500/50 text-red-200' : 'bg-blue-600/20 border-blue-400/50 text-blue-100'}`}>
+             <Bell size={16} className="animate-pulse" />
+             <span className="text-xs font-bold tracking-wide">{toast.message}</span>
+           </div>
         </div>
       )}
 
-      <main className="flex-1 p-4 overflow-y-auto">
-        {currentPage === Page.Mining && (
-          <MiningPage state={userState} settings={appSettings} onStart={handleStartMining} onEnd={handleEndMining} onClaimGift={handleClaimDailyGift} />
+      <header className="px-6 pt-10 pb-4 flex justify-between items-center z-10">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={handleSecretToggle}>
+          <div className="relative">
+            <div className="absolute inset-0 bg-blue-500 blur-xl opacity-30 animate-pulse"></div>
+            {TON_LOGO("w-10 h-10 relative")}
+          </div>
+          <div className="flex flex-col">
+            <span className="font-black text-lg tracking-tight uppercase">TON Miner</span>
+            <span className="text-[9px] text-blue-400 font-bold tracking-[0.2em] uppercase opacity-70">Premium Cloud</span>
+          </div>
+        </div>
+        <div className="glass-card px-4 py-2 rounded-xl flex items-center gap-2 border-white/5 glow-blue">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[10px] text-slate-300 font-bold uppercase tracking-wider">{state.config.activeMinersDisplay.toLocaleString()}</span>
+        </div>
+      </header>
+
+      <main className="flex-1 px-5 pb-32 pt-4 overflow-y-auto scroll-smooth">
+        {currentView === View.MINING && (
+          <MiningView 
+            stats={state.stats} config={state.config} withdrawals={state.withdrawals} monetization={state.monetization}
+            onStart={() => setState(p => ({ ...p, stats: { ...p.stats, sessionStartTime: Date.now() } }))} 
+            onClaimDaily={() => { setState(p => ({ ...p, stats: { ...p.stats, balance: p.stats.balance + p.config.dailyGiftReward, lastDailyGiftClaimed: Date.now() } })); showToast('تم استلام الهدية!'); }} 
+            onClaimFaucet={() => { setState(p => ({ ...p, stats: { ...p.stats, balance: p.stats.balance + p.config.faucetReward, lastFaucetClaimed: Date.now() } })); showToast('تم ملء الصنبور!'); }}
+            onAdBonus={() => setState(p => ({ ...p, stats: { ...p.stats, balance: p.stats.balance + p.monetization.adBonus } }))}
+            onWithdrawal={(wallet, amount) => { setState(prev => ({ ...prev, stats: { ...prev.stats, balance: prev.stats.balance - amount }, withdrawals: [...prev.withdrawals, { id: Date.now().toString(), username: 'User', walletAddress: wallet, amount, status: 'Pending', requestedAt: new Date().toLocaleString() }] })); showToast('تم إرسال طلب السحب'); }}
+          />
         )}
-        {currentPage === Page.Tasks && (
-          <TasksPage state={userState} settings={appSettings} onComplete={handleCompleteTask} />
-        )}
-        {currentPage === Page.Referrals && (
-          <ReferralPage state={userState} settings={appSettings} />
-        )}
-        {currentPage === Page.Wallet && (
-          <WalletPage state={userState} settings={appSettings} onUpdateAddress={(addr) => setUserState(p => ({...p, withdrawalAddress: addr}))} onWithdraw={handleWithdraw} />
-        )}
-        {currentPage === Page.Admin && (
-          <AdminDashboard settings={appSettings} onSaveSettings={setAppSettings} withdrawals={userState.withdrawalHistory} onUpdateWithdrawal={updateWithdrawalStatus} onClose={() => setCurrentPage(Page.Mining)} />
+        {currentView === View.REFERRALS && <ReferralView referrals={state.referrals} code={state.referralCode} />}
+        {currentView === View.TASKS && <TasksView tasks={state.tasks} onComplete={(id) => { setState(prev => ({ ...prev, stats: { ...prev.stats, balance: prev.stats.balance + (prev.tasks.find(t => t.id === id)?.reward || 0) }, tasks: prev.tasks.map(t => t.id === id ? { ...t, completed: true } : t) })); showToast('تم إكمال المهمة'); }} />}
+        {currentView === View.ADMIN && isAdminVisible && (
+          <AdminView 
+            state={state} onUpdateConfig={(c) => setState(p => ({ ...p, config: c }))} onUpdateMonetization={(m) => setState(p => ({ ...p, monetization: m }))}
+            onUpdateTasks={(t) => setState(p => ({ ...p, tasks: t }))} onUpdateWithdrawalStatus={(id, status) => setState(prev => ({ ...prev, withdrawals: prev.withdrawals.map(w => w.id === id ? { ...w, status } : w) }))}
+            onReset={() => { localStorage.removeItem(LOCAL_STORAGE_KEY); window.location.reload(); }}
+            onAddBalance={(amt) => setState(p => ({ ...p, stats: { ...p.stats, balance: p.stats.balance + amt } }))}
+          />
         )}
       </main>
 
-      {currentPage !== Page.Admin && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md border-t border-slate-800 flex justify-around p-3 z-50">
-          <NavBtn active={currentPage === Page.Mining} label="تعدين" icon="⛏️" onClick={() => setCurrentPage(Page.Mining)} />
-          <NavBtn active={currentPage === Page.Tasks} label="مهام" icon="📋" onClick={() => setCurrentPage(Page.Tasks)} />
-          <NavBtn active={currentPage === Page.Referrals} label="إحالة" icon="👥" onClick={() => setCurrentPage(Page.Referrals)} />
-          <NavBtn active={currentPage === Page.Wallet} label="محفظة" icon="💰" onClick={() => setCurrentPage(Page.Wallet)} />
-        </nav>
+      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto glass-card border-t border-white/10 flex justify-around py-4 px-2 z-50 rounded-t-[2rem]">
+        {NAV_ITEMS.filter(item => item.view !== View.ADMIN || isAdminVisible).map(({ view, label, Icon }) => (
+          <button key={view} onClick={() => handleViewChange(view)} className={`flex flex-col items-center gap-1.5 flex-1 transition-all ${currentView === view ? 'text-blue-400' : 'text-slate-500'}`}>
+            <div className={`p-2.5 rounded-xl transition-all ${currentView === view ? 'bg-blue-600/20 text-blue-400 scale-110 shadow-lg' : ''}`}>
+              <Icon size={20} strokeWidth={currentView === view ? 2.5 : 2} />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-wider">{label}</span>
+          </button>
+        ))}
+      </nav>
+
+      {isPasscodePromptOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-[3000] flex items-center justify-center p-6 animate-in zoom-in-95">
+           <div className="w-full glass-card rounded-[2.5rem] p-8 space-y-6 relative border-white/10 text-center">
+              <button onClick={() => setIsPasscodePromptOpen(false)} className="absolute top-6 right-6 text-slate-500"><X size={24}/></button>
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-16 h-16 bg-red-600/20 rounded-2xl flex items-center justify-center text-red-500"><Lock size={30} /></div>
+                <h2 className="text-xl font-black uppercase">منطقة المسؤولين</h2>
+              </div>
+              <input 
+                type="password" value={passcodeInput} onChange={(e) => setPasscodeInput(e.target.value)} 
+                className="w-full bg-black/40 border border-white/10 rounded-2xl px-4 py-4 text-center text-2xl font-black text-white outline-none focus:border-red-500" 
+                placeholder="••••" autoFocus 
+              />
+              <button onClick={verifyPasscode} className="w-full bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-2xl text-sm uppercase transition-transform active:scale-95">دخول</button>
+           </div>
+        </div>
       )}
     </div>
   );
 };
-
-const NavBtn = ({ active, label, icon, onClick }: any) => (
-  <button onClick={onClick} className={`flex flex-col items-center gap-1 flex-1 ${active ? 'text-blue-400' : 'text-slate-500'}`}>
-    <span className="text-xl">{icon}</span>
-    <span className="text-[10px] font-bold">{label}</span>
-  </button>
-);
 
 export default App;
