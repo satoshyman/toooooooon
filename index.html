@@ -87,11 +87,11 @@
         window.onerror = function(msg, url, lineNo, columnNo, error) {
             console.error('Runtime Error:', msg, 'at', lineNo + ':' + columnNo);
             const root = document.getElementById('root');
-            if (root && (msg.includes('useState') || msg.includes('null'))) {
+            if (root && (msg.includes('useState') || msg.includes('null') || msg.includes('specifier'))) {
                 root.innerHTML = `
                     <div style="padding: 40px; color: #ef4444; text-align: center; font-family: 'Cairo', sans-serif; background: #020617; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                        <h2 style="font-weight: 900; color: #fff;">خطأ في تحميل النظام</h2>
-                        <p style="font-size: 14px; color: #64748b; margin-top: 15px;">يوجد تعارض في ملفات النظام. يرجى تحديث الصفحة أو مسح ذاكرة التخزين المؤقت.</p>
+                        <h2 style="font-weight: 900; color: white;">عذراً، حدث خطأ فني</h2>
+                        <p style="font-size: 14px; color: #64748b; margin-top: 15px;">يرجى مسح ذاكرة التخزين المؤقت للمتصفح (Cache) وإعادة المحاولة.</p>
                         <button onclick="location.reload(true)" style="margin-top: 25px; background: #0088CC; color: white; border: none; padding: 12px 30px; border-radius: 12px; font-weight: bold; cursor: pointer;">تحديث الصفحة</button>
                     </div>
                 `;
