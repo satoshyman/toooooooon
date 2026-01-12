@@ -1,4 +1,5 @@
 
+
 import React, { useMemo } from 'react';
 import { Referral } from '../types.ts';
 import { Copy, Share2, Users, UserPlus, History, TrendingUp, ArrowUpRight, ExternalLink, Award, Sparkles, Diamond, Crown } from 'lucide-react';
