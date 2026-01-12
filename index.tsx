@@ -1,8 +1,9 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-// Fix: Import App using the correct casing to match the file name App.tsx and resolve casing conflict
-import App from './App.tsx';
+// استخدام app.tsx كمرجع أساسي موحد
+// Fixed casing mismatch: Changed from './App.tsx' to './app.tsx' to match the file provided in the program.
+import App from './app.tsx';
 
 const rootElement = document.getElementById('root');
 
@@ -16,6 +17,9 @@ if (rootElement) {
     );
   } catch (error) {
     console.error("Critical Mounting Error:", error);
-    rootElement.innerHTML = `<div style="color:white; padding:20px; text-align:center;">خطأ في تشغيل التطبيق: ${error.message}</div>`;
+    rootElement.innerHTML = `<div style="color:white; padding:20px; text-align:center; font-family:sans-serif;">
+      <h2>خطأ في تشغيل التطبيق</h2>
+      <p>${error instanceof Error ? error.message : String(error)}</p>
+    </div>`;
   }
 }
